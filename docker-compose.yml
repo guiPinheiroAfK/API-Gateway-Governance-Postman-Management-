@@ -79,7 +79,7 @@ services:
       - USERS_SERVICE_URL=http://users-service:8081
       - PRODUCTS_SERVICE_URL=http://products-service:8082
       - ORDERS_SERVICE_URL=http://orders-service:8083
-      - CORS_ORIGIN=http://localhost:5173
+      - CORS_ORIGIN=http://localhost:5205
     depends_on:
       redis:
         condition: service_healthy
@@ -96,7 +96,7 @@ services:
       dockerfile: Dockerfile
     container_name: orquestra-frontend
     ports:
-      - '5173:80'
+      - '5205:80'
     depends_on:
       - gateway
 

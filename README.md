@@ -62,7 +62,7 @@ docker compose up --build
 
 Services will be available at:
 - Gateway: http://localhost:3000
-- Dashboard: http://localhost:5173
+- Dashboard: http://localhost:5205
 - Users: http://localhost:8081
 - Products: http://localhost:8082
 - Orders: http://localhost:8083
