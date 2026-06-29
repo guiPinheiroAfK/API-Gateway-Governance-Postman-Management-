@@ -1,0 +1,25 @@
+{
+  "name": "orquestra-gateway",
+  "version": "1.0.0",
+  "description": "API Gateway — reverse proxy, JWT auth, rate limiting, API versioning and RFC 7807 error standardization",
+  "private": true,
+  "workspaces": [
+    "gateway",
+    "services/users",
+    "services/products",
+    "services/orders"
+  ],
+  "scripts": {
+    "gateway": "npm run dev --workspace=gateway",
+    "users": "npm run dev --workspace=services/users",
+    "products": "npm run dev --workspace=services/products",
+    "orders": "npm run dev --workspace=services/orders",
+    "services": "concurrently \"npm run users\" \"npm run products\" \"npm run orders\"",
+    "dev": "concurrently \"npm run gateway\" \"npm run services\"",
+    "build": "npm run build --workspaces",
+    "test:api": "newman run postman/collection.json -e postman/environment.json --reporters cli,json --reporter-json-export postman/results.json"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
