@@ -1,0 +1,104 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: orquestra-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  users-service:
+    build:
+      context: ./services/users
+      dockerfile: Dockerfile
+    container_name: orquestra-users
+    ports:
+      - '8081:8081'
+    environment:
+      - PORT=8081
+      - NODE_ENV=production
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8081/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  products-service:
+    build:
+      context: ./services/products
+      dockerfile: Dockerfile
+    container_name: orquestra-products
+    ports:
+      - '8082:8082'
+    environment:
+      - PORT=8082
+      - NODE_ENV=production
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8082/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  orders-service:
+    build:
+      context: ./services/orders
+      dockerfile: Dockerfile
+    container_name: orquestra-orders
+    ports:
+      - '8083:8083'
+    environment:
+      - PORT=8083
+      - NODE_ENV=production
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8083/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: orquestra-gateway
+    ports:
+      - '3000:3000'
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-orquestra-secret-change-in-prod}
+      - RATE_LIMIT_MAX=100
+      - RATE_LIMIT_WINDOW_MS=60000
+      - USERS_SERVICE_URL=http://users-service:8081
+      - PRODUCTS_SERVICE_URL=http://products-service:8082
+      - ORDERS_SERVICE_URL=http://orders-service:8083
+      - CORS_ORIGIN=http://localhost:5173
+    depends_on:
+      redis:
+        condition: service_healthy
+      users-service:
+        condition: service_healthy
+      products-service:
+        condition: service_healthy
+      orders-service:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: orquestra-frontend
+    ports:
+      - '5173:80'
+    depends_on:
+      - gateway
+
+volumes:
+  redis_data:
