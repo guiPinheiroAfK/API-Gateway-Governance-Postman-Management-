@@ -1,0 +1,17 @@
+{
+  "id": "orquestra-dev-env",
+  "name": "Orquestra Gateway — Dev",
+  "values": [
+    { "key": "baseUrl", "value": "http://localhost:3000", "enabled": true, "type": "default" },
+    { "key": "adminEmail", "value": "admin@orquestra.dev", "enabled": true, "type": "default" },
+    { "key": "adminPassword", "value": "admin123", "enabled": true, "type": "default" },
+    { "key": "userEmail", "value": "user@orquestra.dev", "enabled": true, "type": "default" },
+    { "key": "userPassword", "value": "user123", "enabled": true, "type": "default" },
+    { "key": "adminToken", "value": "", "enabled": true, "type": "any" },
+    { "key": "userToken", "value": "", "enabled": true, "type": "any" },
+    { "key": "createdUserId", "value": "", "enabled": true, "type": "any" },
+    { "key": "createdProductId", "value": "", "enabled": true, "type": "any" },
+    { "key": "createdOrderId", "value": "", "enabled": true, "type": "any" }
+  ],
+  "_postman_variable_scope": "environment"
+}

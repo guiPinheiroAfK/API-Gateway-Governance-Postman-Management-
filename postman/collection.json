@@ -1,0 +1,378 @@
+{
+  "info": {
+    "name": "Orquestra Gateway",
+    "description": "API Gateway test suite — auth, rate limiting, proxy routing, API versioning and RFC 7807 error standardization.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [{ "key": "baseUrl", "value": "http://localhost:3000" }],
+  "item": [
+    {
+      "name": "01 — Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": { "method": "GET", "url": "{{baseUrl}}/health" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Response time < 500ms', () => pm.expect(pm.response.responseTime).to.be.below(500));",
+            "pm.test('Status healthy', () => pm.expect(pm.response.json().status).to.eql('healthy'));"
+          ]}}]
+        },
+        {
+          "name": "GET /api/v1/gateway/routes",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/gateway/routes" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Has routes array', () => pm.expect(pm.response.json().routes).to.be.an('array').that.is.not.empty);"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "02 — Authentication",
+      "item": [
+        {
+          "name": "POST /auth/login — admin",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"email\": \"{{adminEmail}}\", \"password\": \"{{adminPassword}}\"}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Returns admin JWT', () => {",
+            "  const j = pm.response.json();",
+            "  pm.expect(j.accessToken).to.be.a('string').and.not.empty;",
+            "  pm.expect(j.tokenType).to.eql('Bearer');",
+            "  pm.expect(j.user.role).to.eql('admin');",
+            "  pm.environment.set('adminToken', j.accessToken);",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /auth/login — user",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"email\": \"{{userEmail}}\", \"password\": \"{{userPassword}}\"}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Sets user token', () => pm.environment.set('userToken', pm.response.json().accessToken));"
+          ]}}]
+        },
+        {
+          "name": "POST /auth/login — bad credentials (401)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"email\": \"x@x.com\", \"password\": \"wrong\"}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 401', () => pm.response.to.have.status(401));",
+            "pm.test('RFC 7807 Problem Details', () => {",
+            "  const j = pm.response.json();",
+            "  pm.expect(j.type).to.include('orquestra-gateway.dev/errors');",
+            "  pm.expect(j.status).to.eql(401);",
+            "  pm.expect(j.timestamp).to.be.a('string');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "GET /users — no token (401)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/users" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 401', () => pm.response.to.have.status(401));",
+            "pm.test('Content-Type problem+json', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json'));"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "03 — Users Service (v1)",
+      "item": [
+        {
+          "name": "GET /api/v1/users",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/users",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Response time < 1000ms', () => pm.expect(pm.response.responseTime).to.be.below(1000));",
+            "pm.test('Users array', () => pm.expect(pm.response.json().data).to.be.an('array').that.is.not.empty);",
+            "pm.test('X-RateLimit headers', () => {",
+            "  pm.expect(pm.response.headers.get('X-RateLimit-Limit')).to.exist;",
+            "  pm.expect(pm.response.headers.get('X-RateLimit-Remaining')).to.exist;",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "GET /api/v1/users/1",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/users/1",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('User fields', () => {",
+            "  const d = pm.response.json().data;",
+            "  pm.expect(d.id).to.be.a('string');",
+            "  pm.expect(d.name).to.be.a('string');",
+            "  pm.expect(d.email).to.be.a('string');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /api/v1/users",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/users",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\"name\": \"Test User\", \"email\": \"test@postman.dev\"}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('User created', () => {",
+            "  const d = pm.response.json().data;",
+            "  pm.expect(d.id).to.be.a('string');",
+            "  pm.environment.set('createdUserId', d.id);",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "GET /api/v1/users/99999 — not found (404)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/users/99999",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 404', () => pm.response.to.have.status(404));"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "04 — Products (v1 + v2 versioning)",
+      "item": [
+        {
+          "name": "GET /api/v1/products — simple array",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('v1 simple response — no HAL links', () => {",
+            "  const j = pm.response.json();",
+            "  pm.expect(j.data).to.be.an('array');",
+            "  pm.expect(j._links).to.be.undefined;",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "GET /api/v2/products — HAL pagination",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/products?page=1&limit=3",
+              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "3" }]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('v2 has pagination and HAL _links', () => {",
+            "  const j = pm.response.json();",
+            "  pm.expect(j.pagination).to.exist;",
+            "  pm.expect(j.pagination.page).to.eql(1);",
+            "  pm.expect(j._links).to.exist;",
+            "  pm.expect(j._links.self).to.exist;",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /api/v1/products",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/products",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\"name\": \"Test Product\", \"price\": 99.99, \"sku\": \"TEST-001\"}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('Product SKU matches', () => {",
+            "  const d = pm.response.json().data;",
+            "  pm.expect(d.sku).to.eql('TEST-001');",
+            "  pm.environment.set('createdProductId', d.id);",
+            "});"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "05 — Orders Service",
+      "item": [
+        {
+          "name": "GET /api/v1/orders",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/orders",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Orders array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+          ]}}]
+        },
+        {
+          "name": "POST /api/v1/orders",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/orders",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{userToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\"items\": [{\"productId\": \"1\", \"productName\": \"Keyboard\", \"quantity\": 2, \"unitPrice\": 299.99}], \"shippingAddress\": \"Rua Postman, 100\"}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('Order total correct', () => {",
+            "  const d = pm.response.json().data;",
+            "  pm.expect(d.id).to.match(/^ORD-/);",
+            "  pm.expect(d.total).to.eql(599.98);",
+            "  pm.expect(d.status).to.eql('pending');",
+            "  pm.environment.set('createdOrderId', d.id);",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "PATCH /api/v1/orders/:id/status",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/v1/orders/{{createdOrderId}}/status",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\"status\": \"confirmed\"}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Status updated to confirmed', () => pm.expect(pm.response.json().data.status).to.eql('confirmed'));"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "06 — Rate Limiting (Token Bucket)",
+      "item": [
+        {
+          "name": "Rate limit headers present",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/users",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('X-RateLimit-Limit header', () => pm.expect(pm.response.headers.get('X-RateLimit-Limit')).to.exist);",
+            "pm.test('Remaining <= Limit', () => {",
+            "  const remaining = Number(pm.response.headers.get('X-RateLimit-Remaining'));",
+            "  const limit = Number(pm.response.headers.get('X-RateLimit-Limit'));",
+            "  pm.expect(remaining).to.be.at.most(limit);",
+            "});",
+            "pm.test('X-RateLimit-Policy with window', () => pm.expect(pm.response.headers.get('X-RateLimit-Policy')).to.include('w='));"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "07 — Gateway Metrics (admin only)",
+      "item": [
+        {
+          "name": "GET /api/v1/gateway/metrics — admin ok",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/gateway/metrics",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Metrics schema valid', () => {",
+            "  const j = pm.response.json();",
+            "  ['uptime','totalRequests','requestsPerMinute','services','recentRequests'].forEach(f => {",
+            "    pm.expect(j[f], 'missing field: ' + f).to.exist;",
+            "  });",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "GET /api/v1/gateway/metrics — user forbidden (403)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/gateway/metrics",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 403', () => pm.response.to.have.status(403));",
+            "pm.test('RFC 7807 status field', () => pm.expect(pm.response.json().status).to.eql(403));"
+          ]}}]
+        },
+        {
+          "name": "GET /api/v1/gateway/services",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/gateway/services",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('Services health array', () => {",
+            "  const j = pm.response.json();",
+            "  pm.expect(j.services).to.be.an('array').with.length(3);",
+            "  j.services.forEach(s => pm.expect(['healthy','degraded','down']).to.include(s.status));",
+            "});"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "08 — RFC 7807 Error Standardization",
+      "item": [
+        {
+          "name": "404 — Problem Details full schema",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/nonexistent-route",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 404', () => pm.response.to.have.status(404));",
+            "pm.test('All RFC 7807 fields present', () => {",
+            "  const j = pm.response.json();",
+            "  ['type','title','status','detail','instance','timestamp'].forEach(f => {",
+            "    pm.expect(j[f], 'missing field: ' + f).to.exist;",
+            "  });",
+            "  pm.expect(j.status).to.eql(404);",
+            "  pm.expect(j.type).to.include('orquestra-gateway.dev/errors');",
+            "});"
+          ]}}]
+        }
+      ]
+    }
+  ]
+}
